@@ -37,6 +37,108 @@ public class SegwayeBikeProtocolEncoderTest extends ProtocolTest {
     }
 
     @Test
+    public void testEncodeLockUnlockWithDefaults() throws Exception {
+
+        var encoder = inject(new SegwayeBikeProtocolEncoder(null));
+
+        // Test ENGINE_STOP (unlock) with default parameters
+        Command unlockCommand = new Command();
+        unlockCommand.setDeviceId(1);
+        unlockCommand.setType(Command.TYPE_ENGINE_STOP);
+        
+        String result = encoder.encodeCommand(null, unlockCommand).toString();
+        assert result != null;
+        assert result.startsWith("\u00ff\u00ff*HBCS,NB,123456789012345,R0,0,20,1234,");
+        assert result.endsWith("#\n");
+
+        // Test ALARM_ARM (lock) with default parameters  
+        Command lockCommand = new Command();
+        lockCommand.setDeviceId(1);
+        lockCommand.setType(Command.TYPE_ALARM_ARM);
+        
+        result = encoder.encodeCommand(null, lockCommand).toString();
+        assert result != null;
+        assert result.startsWith("\u00ff\u00ff*HBCS,NB,123456789012345,R0,1,20,1234,");
+        assert result.endsWith("#\n");
+    }
+
+    @Test
+    public void testEncodeLockUnlockWithCustomParameters() throws Exception {
+
+        var encoder = inject(new SegwayeBikeProtocolEncoder(null));
+
+        // Test unlock with custom parameters from LockNUnlock spec
+        Command unlockCommand = new Command();
+        unlockCommand.setDeviceId(1);
+        unlockCommand.setType(Command.TYPE_ENGINE_STOP);
+        unlockCommand.set("keyValidTime", 30);
+        unlockCommand.set("userId", "user123");
+        unlockCommand.set("timestamp", 1497689816L);
+        
+        assertEquals("\u00ff\u00ff*HBCS,NB,123456789012345,R0,0,30,user123,1497689816#\n", 
+                     encoder.encodeCommand(null, unlockCommand));
+
+        // Test lock with custom parameters
+        Command lockCommand = new Command();
+        lockCommand.setDeviceId(1);
+        lockCommand.setType(Command.TYPE_ALARM_ARM);
+        lockCommand.set("keyValidTime", 60);
+        lockCommand.set("userId", "admin");
+        lockCommand.set("timestamp", 1497689900L);
+        
+        assertEquals("\u00ff\u00ff*HBCS,NB,123456789012345,R0,1,60,admin,1497689900#\n", 
+                     encoder.encodeCommand(null, lockCommand));
+    }
+
+    @Test
+    public void testParameterValidation() throws Exception {
+
+        var encoder = inject(new SegwayeBikeProtocolEncoder(null));
+
+        // Test keyValidTime validation (should clamp to 0-65535)
+        Command command1 = new Command();
+        command1.setDeviceId(1);
+        command1.setType(Command.TYPE_ENGINE_STOP);
+        command1.set("keyValidTime", -10); // Invalid: negative
+        
+        String result = encoder.encodeCommand(null, command1).toString();
+        assert result != null;
+        assert result.contains("R0,0,20,"); // Should use default 20
+
+        // Test keyValidTime > 65535
+        Command command2 = new Command();
+        command2.setDeviceId(1);
+        command2.setType(Command.TYPE_ENGINE_STOP);
+        command2.set("keyValidTime", 70000); // Invalid: > 65535
+        
+        result = encoder.encodeCommand(null, command2).toString();
+        assert result != null;
+        assert result.contains("R0,0,20,"); // Should use default 20
+
+        // Test userId length validation (max 15 characters)
+        Command command3 = new Command();
+        command3.setDeviceId(1);
+        command3.setType(Command.TYPE_ENGINE_STOP);
+        command3.set("userId", "verylongusernamethatexceeds15chars");
+        
+        result = encoder.encodeCommand(null, command3).toString();
+        assert result != null;
+        assert result.contains("verylongusern"); // Should be truncated to 15 chars
+        assert !result.contains("verylongusernamethatexceeds15chars");
+
+        // Test timestamp validation (should clamp to 0-4294967295)
+        Command command4 = new Command();
+        command4.setDeviceId(1);
+        command4.setType(Command.TYPE_ENGINE_STOP);
+        command4.set("timestamp", -100L); // Invalid: negative
+        
+        result = encoder.encodeCommand(null, command4).toString();
+        assert result != null;
+        // Should use current timestamp (positive number)
+        assert !result.contains(",-100#");
+    }
+
+    @Test
     public void testEncodeSegwayeBikeCommands() throws Exception {
 
         var encoder = inject(new SegwayeBikeProtocolEncoder(null));

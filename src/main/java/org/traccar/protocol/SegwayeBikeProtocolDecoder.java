@@ -105,12 +105,26 @@ public class SegwayeBikeProtocolDecoder extends BaseProtocolDecoder {
                 response.append(type).append("#\n");
                 channel.write(new NetworkMessage(response.toString(), remoteAddress));
             } else if (type.equals("R0") && pendingCommand != null) {
-                String command = pendingCommand.equals(Command.TYPE_ALARM_ARM) ? "L1" : "L0";
-                response.append(command);
-                String[] remaining = Arrays.copyOfRange(values, index, values.length);
-                response.append(String.join(",", remaining));
-                response.append("#\n");
-                channel.write(new NetworkMessage(response.toString(), remoteAddress));
+                // R0 response format: R0,{OPERATION},{OPERATION_KEY},{USER_ID},{TIMESTAMP}
+                // Extract operation key from R0 response (index+1 because operation is at index)
+                if (index + 1 < values.length) {
+                    String operationKey = values[index + 1];
+                    String userId = index + 2 < values.length ? values[index + 2] : "1234";
+                    String timestamp = index + 3 < values.length ? values[index + 3]
+                            : String.valueOf(System.currentTimeMillis() / 1000);
+
+                    String command = pendingCommand.equals(Command.TYPE_ALARM_ARM) ? "L1" : "L0";
+                    response.append(command).append(',').append(operationKey);
+
+                    if ("L0".equals(command)) {
+                        // L0 command requires userId and timestamp: L0,{OPERATION_KEY},{USER_ID},{TIMESTAMP}
+                        response.append(',').append(userId).append(',').append(timestamp);
+                    }
+                    // L1 command only requires operation key: L1,{OPERATION_KEY}
+
+                    response.append("#\n");
+                    channel.write(new NetworkMessage(response.toString(), remoteAddress));
+                }
                 pendingCommand = null;
             }
         }
